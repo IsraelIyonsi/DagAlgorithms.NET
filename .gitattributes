@@ -1,0 +1,2 @@
+* text=auto
+tests/DagAlgorithms.Net.Tests/fixtures/** -text
