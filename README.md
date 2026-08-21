@@ -97,6 +97,42 @@ await GraphScheduler.ExecuteAsync(
 `unit-tests` and `integration-tests` run concurrently once `build` finishes; `publish`
 waits for both.
 
+## Impact analysis: transitive dependencies
+
+`GetDescendants` returns everything reachable by following edges forward;
+`GetAncestors` returns everything that reaches a node by following edges backward. This
+is the query behind impact analysis: when one build step, package, or service changes,
+which others transitively depend on it and must be rebuilt, retested, or redeployed?
+
+```csharp
+using DagAlgorithms.Net;
+
+var graph = new DirectedGraph<string>();
+graph.AddEdge("core", "orders");
+graph.AddEdge("core", "billing");
+graph.AddEdge("orders", "checkout");
+graph.AddEdge("billing", "checkout");
+
+// "core" just changed. What is downstream of it and needs a rebuild?
+foreach (var affected in graph.GetDescendants("core"))
+{
+    Console.WriteLine(affected);
+    // orders, billing, checkout
+}
+
+// What must "checkout" be built on top of?
+foreach (var dependency in graph.GetAncestors("checkout"))
+{
+    Console.WriteLine(dependency);
+    // orders, billing, core
+}
+```
+
+Both walk the graph iteratively (an explicit queue plus a visited set, never recursion),
+return their results in breadth-first discovery order, and terminate even if the graph
+contains a cycle. A node is excluded from its own descendants and ancestors unless a
+cycle genuinely leads back to it.
+
 ## Strongly connected components
 
 `StronglyConnectedComponents` partitions the graph using Tarjan's algorithm, useful for
@@ -115,6 +151,8 @@ foreach (var component in components.Where(c => c.Count > 1))
 | Type | Purpose |
 |---|---|
 | `DirectedGraph<TNode>` | Build the graph: `AddNode`, `AddEdge`, `GetSuccessors`, `GetPredecessors` |
+| `DirectedGraph<TNode>.GetDescendants(node)` | Transitive closure over successors: everything downstream, for impact analysis |
+| `DirectedGraph<TNode>.GetAncestors(node)` | Transitive closure over predecessors: everything upstream a node depends on |
 | `DirectedGraph<TNode>.TopologicalSort()` | Kahn's algorithm; a stable order or the exact cycle |
 | `DirectedGraph<TNode>.TryDetectCycle(out cycle)` | DFS cycle-path extraction on its own |
 | `DirectedGraph<TNode>.StronglyConnectedComponents()` | Tarjan's algorithm, iterative, no recursion depth limit |

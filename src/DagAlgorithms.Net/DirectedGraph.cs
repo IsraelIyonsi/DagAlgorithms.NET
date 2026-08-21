@@ -170,6 +170,96 @@ public sealed class DirectedGraph<TNode>
     }
 
     /// <summary>
+    /// Gets every node reachable from <paramref name="node"/> by following successor
+    /// edges transitively (its transitive closure over successors), excluding
+    /// <paramref name="node"/> itself unless a cycle leads back to it.
+    /// </summary>
+    /// <param name="node">The node whose descendants to retrieve.</param>
+    /// <returns>
+    /// Every node reachable from <paramref name="node"/>, in breadth-first discovery
+    /// order starting from its direct successors. The order is deterministic and
+    /// reproducible: it follows this graph's insertion-order edge storage, so repeated
+    /// calls on an unmodified graph return the same sequence. In an acyclic graph the
+    /// result never contains <paramref name="node"/>; if a cycle reaches back to
+    /// <paramref name="node"/> it is included, discovered like any other reachable node.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="node"/> does not exist in the graph.</exception>
+    /// <remarks>
+    /// Traversal is iterative, using an explicit queue and a visited set rather than
+    /// recursion, so it terminates on cyclic graphs and its depth is not bounded by the
+    /// runtime call stack. This is the standard query behind impact analysis: given a
+    /// changed build step, package, or service, "what transitively depends on this and
+    /// must be rebuilt, retested, or redeployed?"
+    /// </remarks>
+    public IReadOnlyCollection<TNode> GetDescendants(TNode node) =>
+        ReachableClosure(node, _successorsByNode);
+
+    /// <summary>
+    /// Gets every node that can reach <paramref name="node"/> by following successor
+    /// edges transitively (its transitive closure over predecessors), excluding
+    /// <paramref name="node"/> itself unless a cycle leads back to it.
+    /// </summary>
+    /// <param name="node">The node whose ancestors to retrieve.</param>
+    /// <returns>
+    /// Every node that can reach <paramref name="node"/>, in breadth-first discovery
+    /// order starting from its direct predecessors. The order is deterministic and
+    /// reproducible: it follows this graph's insertion-order edge storage, so repeated
+    /// calls on an unmodified graph return the same sequence. In an acyclic graph the
+    /// result never contains <paramref name="node"/>; if a cycle reaches back to
+    /// <paramref name="node"/> it is included, discovered like any other reachable node.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="node"/> does not exist in the graph.</exception>
+    /// <remarks>
+    /// Traversal is iterative, using an explicit queue and a visited set rather than
+    /// recursion, so it terminates on cyclic graphs and its depth is not bounded by the
+    /// runtime call stack. This is the standard query behind impact analysis: given a
+    /// target build step, package, or service, "what must be in place before this can
+    /// run, because it transitively feeds into it?"
+    /// </remarks>
+    public IReadOnlyCollection<TNode> GetAncestors(TNode node) =>
+        ReachableClosure(node, _predecessorsByNode);
+
+    private IReadOnlyCollection<TNode> ReachableClosure(
+        TNode node,
+        Dictionary<TNode, OrderedSet<TNode>> adjacencyByNode)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+
+        if (!adjacencyByNode.TryGetValue(node, out var directNeighbors))
+        {
+            throw new ArgumentException(GraphErrorMessages.NodeNotInGraph, nameof(node));
+        }
+
+        var discovered = new List<TNode>();
+        var visited = new HashSet<TNode>(Comparer);
+        var frontier = new Queue<TNode>();
+
+        foreach (var neighbor in directNeighbors)
+        {
+            if (visited.Add(neighbor))
+            {
+                frontier.Enqueue(neighbor);
+                discovered.Add(neighbor);
+            }
+        }
+
+        while (frontier.Count > 0)
+        {
+            var current = frontier.Dequeue();
+            foreach (var neighbor in adjacencyByNode[current])
+            {
+                if (visited.Add(neighbor))
+                {
+                    frontier.Enqueue(neighbor);
+                    discovered.Add(neighbor);
+                }
+            }
+        }
+
+        return discovered;
+    }
+
+    /// <summary>
     /// Computes a topological order over the graph using Kahn's algorithm, breaking
     /// ties between simultaneously-ready nodes by insertion order.
     /// </summary>

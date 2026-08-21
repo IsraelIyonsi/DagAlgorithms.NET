@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-21
+
+### Added
+
+- `DirectedGraph<TNode>.GetDescendants(node)`: every node transitively reachable from
+  `node` by following successor edges (its successor transitive closure), for impact
+  analysis such as "what depends on this and must be rebuilt, retested, or redeployed?".
+- `DirectedGraph<TNode>.GetAncestors(node)`: every node that can transitively reach
+  `node` by following predecessor edges (its predecessor transitive closure), for
+  "what must be in place before this can run?".
+- Both queries traverse iteratively with an explicit queue and a visited set, so they
+  terminate on cyclic graphs and their depth is not bounded by the runtime call stack.
+  Results are returned in breadth-first discovery order, deterministic and reproducible
+  from the graph's insertion-order edge storage. Each throws `ArgumentException` for a
+  node that is not in the graph, matching `GetSuccessors` and `GetPredecessors`.
+
 ## [0.1.0] - 2026-08-12
 
 ### Added
